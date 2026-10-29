@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.db
+*.db-journal
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Env / editor
+.env
+.idea/
+.vscode/
+.DS_Store
+
+# Local artefacts
+.e2e-work/
+.demo-work/
