@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -r backend/requirements-dev.txt
+          backend/.venv/bin/pip install --no-deps -e backend
+      - run: make lint
+      - run: cd backend && .venv/bin/mypy soroban_indexer
+      - run: make docs-check
+      - run: make test-backend
+      - run: make e2e
+
+  backend-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: indexer
+          POSTGRES_PASSWORD: indexer
+          POSTGRES_DB: indexer
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U indexer" --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://indexer:indexer@localhost:5432/indexer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -r backend/requirements-dev.txt
+          backend/.venv/bin/pip install --no-deps -e backend
+      - run: cd backend && .venv/bin/pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker-compose.yml -f docker-compose.demo.yml build
+      - name: Smoke test the demo stack
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+          for i in $(seq 1 60); do curl -sf localhost:8080/api/health && break; sleep 2; done
+          sleep 5
+          curl -sf localhost:8080/api/stats | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s["total_events"] > 0, s; print(s)'
+      - if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.demo.yml logs --tail 50

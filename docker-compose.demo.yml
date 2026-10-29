@@ -1,0 +1,25 @@
+# Offline demo: a fake RPC that closes a ledger every 5 s with synthetic
+# transfer / mint / swap events. No network access or Stellar node needed.
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+
+x-demo-env: &demo-env
+  RPC_URL: http://fake-rpc:8900
+  START_LEDGER: "1000"
+  POLL_INTERVAL_SECONDS: "2"
+
+services:
+  fake-rpc:
+    image: soroban-event-indexer:local
+    entrypoint: ["python", "/e2e/fake_rpc.py"]
+    command: ["--host", "0.0.0.0", "--port", "8900", "--ledgers", "60", "--tick", "5"]
+    volumes:
+      - ./tests-e2e:/e2e:ro
+    restart: unless-stopped
+
+  indexer:
+    environment: *demo-env
+    depends_on:
+      - fake-rpc
+
+  api:
+    environment: *demo-env

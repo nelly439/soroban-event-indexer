@@ -1,0 +1,36 @@
+# Run the stack on PostgreSQL instead of SQLite:
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+
+x-postgres-env: &pg-env
+  DATABASE_URL: postgresql+psycopg://indexer:${POSTGRES_PASSWORD:-indexer}@postgres:5432/indexer
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: indexer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-indexer}
+      POSTGRES_DB: indexer
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U indexer -d indexer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  indexer:
+    environment: *pg-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    environment: *pg-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
